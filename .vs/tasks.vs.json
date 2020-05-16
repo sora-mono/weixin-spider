@@ -1,0 +1,10 @@
+{
+  "version": "0.2.1",
+  "tasks": [
+    {
+      "taskLabel": "任务-后台",
+      "appliesTo": "后台.py",
+      "type": "launch"
+    }
+  ]
+}
