@@ -321,5 +321,21 @@ class  weixin_spider():
     #    comment_id = comment_id.replace('var comment_id = "','').replace('"
     #    ||','')
     #    return (appmsg_token,comment_id)
+    
+    def load_csv(self):     #从文件中加载数据（适用于被微信封IP等操作后过一段时间继续爬取）
+        print("正在加载CSV，请稍候")
+        fp = open('./result.csv','r',encoding='utf-8')
+        reader = csv.reader(fp)
+        temp_list = {}
+        for row in reader:
+            temp_list.clear()
+            temp_list['inside_id'] = row[0]
+            temp_list['time'] = row[1]
+            temp_list['author'] = row[2]
+            temp_list['source_url'] = row[3]
+            temp_list['content_url'] = row[4]
+            temp_list['cover'] = row[5]
+            self.data_decoded.append(copy.deepcopy(temp_list))
+        return temp_list['inside_id']   #返回最后一条数据对应的内部ID
 a = weixin_spider()
 a.spider()
