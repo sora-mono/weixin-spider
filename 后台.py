@@ -18,6 +18,7 @@ class NoQuoteSession(requests.Session): #这个类用于解决requests.get会自
             urllib.parse.quote(':'): ':',
             urllib.parse.quote(','): ',',
             urllib.parse.quote('='): '=',
+            urllib.parse.quote('%'): '%',
         }
         for old, new in table.items():
             prep.url = prep.url.replace(old, new)
@@ -105,7 +106,7 @@ class  weixin_spider():
             self.data_decoded_temp['title'] = data['title'].replace('&amp','&')   #文章标题
             self.data_decoded_temp['digest'] = data['digest']
             self.data_decoded_temp['fileid'] = data['fileid']
-            self.data_decoded_temp['contenturl'] = data['content_url'] #含有用户信息的临时链接
+            self.data_decoded_temp['content_url'] = data['content_url'] #含有用户信息的临时链接
             self.data_decoded_temp['source_url'] = data['source_url'] #文章永久链接
             self.data_decoded_temp['cover'] = data['cover']
             self.data_decoded_temp['subtype'] = data['subtype']
@@ -181,7 +182,7 @@ class  weixin_spider():
             }
         s = NoQuoteSession()    #为了解决requests会自动编码=导致请求失败的问题而引入
         response = s.get(url = url,params = params,headers = headers,cookies = cookies
-                         #,verify = False       #这句话防止开启fiddler时无法获取请求
+                         ,verify = False       #这句话防止开启fiddler时无法获取请求
                          )
         return response
 
@@ -248,7 +249,7 @@ class  weixin_spider():
             temp_list['time'] = row[1]
             temp_list['author'] = row[2]
             temp_list['source_url'] = row[3]
-            temp_list['contenturl'] = row[4]
+            temp_list['content_url'] = row[4]
             temp_list['cover'] = row[5]
             self.data_decoded.append(copy.deepcopy(temp_list))
         self.data_decoded.remove({'author': '作者', 'content_url': '临时链接', 'cover': '封面网址', 'inside_id': '序号', 'source_url': '永久链接', 'time': '发布时间'})
@@ -266,7 +267,7 @@ class  weixin_spider():
             temp_list.append(i['time'])
             temp_list.append(i['author'])
             temp_list.append(i['source_url'])   #文章永久链接
-            temp_list.append(i['contenturl'])   #文章临时链接
+            temp_list.append(i['content_url'])   #文章临时链接
             temp_list.append(i['cover'])        #文章封面网址
             writer.writerow(temp_list)
         fp.close()
