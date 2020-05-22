@@ -1,6 +1,4 @@
 #   由于微信验证方式的原因，只能爬取文章，不能爬取评论和点赞数等详细信息
-#   一个挺失败的项目，代码中会含有大量尝试获取评论、点赞但失败的残留
-#   有空的话会处理一下残留的，现在就先这样吧……
 import json
 import requests
 import re
@@ -8,17 +6,28 @@ import copy
 import time
 import csv
 import os
+import traceback
+import urllib
+import requests
+
+class NoQuoteSession(requests.Session): #这个类用于解决requests.get会自动编码=等特殊字符的问题（copy来的，分析过程深入库的源码，看不懂也懒得看了）
+    def send(self, prep, **send_kwargs):
+        table = {
+            urllib.parse.quote('{'): '{',
+            urllib.parse.quote('}'): '}',
+            urllib.parse.quote(':'): ':',
+            urllib.parse.quote(','): ',',
+            urllib.parse.quote('='): '=',
+        }
+        for old, new in table.items():
+            prep.url = prep.url.replace(old, new)
+        return super(NoQuoteSession, self).send(prep, **send_kwargs)
+
 class  weixin_spider():
     def __init__(self):
         self.msgcookie = {} #为提取不同行为用的不同cookie分配空间
         self.msgparams = {}
         self.msgheaders = {}
-        #self.commentcookie = {}
-        #self.commentparams = {}
-        #self.commentheaders = {}
-        #self.appmsgcookie = {}
-        #self.appmsgparams = {}
-        #self.appmsgheaders = {}
         self.headers = {}
         self.prefix = 'https://mp.weixin.qq.com/mp/'    #网址前缀
         self.suffix = ''    #网址后缀
@@ -34,11 +43,6 @@ class  weixin_spider():
         print("注意，下列输入均输入至cookie行（包含该行）结束，如果有多余数据请勿输入，防止数据污染")
         print("请输入action = getmsg的header")
         self.decode_headers('getmsg')
-        #下方函数已废弃，第一次release后删除
-        #print("请输入action = getcomment的header")
-        #self.decode_headers('getcomment')
-        #print("请输入后缀为getappmsgext的header")
-        #self.decode_headers('getappmsg')
 
     def decode_url(self,url,flag):   #获取网址信息函数，flag请填写成'getmsg'
         temp = url.split('?')   #将网址数据区剥离
@@ -48,10 +52,6 @@ class  weixin_spider():
             data = i.split('=',1) #提取变量名和值
             if flag == 'getmsg':
                 self.msgparams[data[0]] = data[1]  #向数据字典中添加数据
-            #elif flag == 'getcomment':
-            #    self.commentparams[data[0]] = data[1]
-            #else :
-            #    self.appmsgparams[data[0]] = data[1]
 
     def decode_cookie(self,cookie,flag): #获取cookie函数（cookie需要ctrl+c复制自fiddler）,cookie形如 Cookie:
                                          #rewardsn=;wxtokenkey=777;
@@ -62,12 +62,6 @@ class  weixin_spider():
             temp2 = i.split('=',1)
             if flag == 'getmsg':
                 self.msgcookie[temp2[0]] = temp2[1]
-            #elif flag == 'getcomment':
-            #    self.commentcookie[temp2[0]] = temp2[1] #提取action =
-            #    getcomment的cookie数据
-            #else:
-            #    self.appmsgcookie[temp2[0]] = temp2[1]
-
 
     def decode_headers(self,flag):   #分析header的raw数据，flag是一个已经废弃的参数，请填写'getmsg'
         temp = 'NULL'
@@ -83,74 +77,77 @@ class  weixin_spider():
                     temp = temp.split(': ')
                     if flag == 'getmsg':
                         self.msgheaders[temp[0]] = temp[1]
-                    #elif flag == 'getcomment':
-                    #    self.commentheaders[temp[0]] = temp[1]
-                    #else:
-                    #    self.appmsgheaders[temp[0]] = temp[1]
             except:
                 break
 
     def decode_response_getmsg(self,response):  #解析action = getmsg时获取的json
         self.json_data = json.loads(response.text)
+        if self.json_data['ret'] != 0:
+            print("出现错误，程序正在退出,data = {:}".format(self.json_data))
+            raise Exception('返回结果有误，请检查header是否有效')
         self.json_urls = json.loads(self.json_data['general_msg_list'])
 
-    #def decode_response_appmsg(self,response): #解析后缀为getappmsgext时获取的json
-    #    #do something
-    #    return
-
-    #def decode_response_comment(): #解析action = getcomment时获取的json
-    #    #do something
-    #    return
-
     def decode_list(self):  #解析decode_response得到的json并提取相应数据存到data_decoded_temp
+        num = 0
         for i in self.json_urls['list']:
+            num+=1
             data = i['comm_msg_info']
-            data_temp = {}
-            data_temp['inside_id'] = self.id    #程序内部的ID
+            self.data_decoded_temp = {}
+            self.data_decoded_temp['inside_id'] = self.id    #程序内部的ID
             self.id+=1
-            data_temp['id'] = data['id']        #文章在微信中的ID
-            data_temp['type'] = data['type']
-            data_temp['datetime'] = data['datetime']
-            data_temp['time'] = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(data['datetime']))
-            data_temp['fakeid'] = data['fakeid']
-            data_temp['status'] = data['status']
+            self.data_decoded_temp['id'] = data['id']        #文章在微信中的ID
+            self.data_decoded_temp['type'] = data['type']
+            self.data_decoded_temp['datetime'] = data['datetime']
+            self.data_decoded_temp['time'] = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(data['datetime']))
+            self.data_decoded_temp['fakeid'] = data['fakeid']
+            self.data_decoded_temp['status'] = data['status']
             data = i['app_msg_ext_info']
-            data_temp['title'] = data['title'].replace('&amp','&')   #文章标题
-            data_temp['digest'] = data['digest']
-            data_temp['fileid'] = data['fileid']
-            data_temp['contenturl'] = data['content_url'] #含有用户信息的临时链接
-            data_temp['source_url'] = data['source_url'] #文章永久链接
-            data_temp['cover'] = data['cover']
-            data_temp['subtype'] = data['subtype']
-            data_temp['author'] = data['author']
-            #data_temp['comment'] = self.get_comment(data_temp['contenturl'])
-            #data_temp['article_info'] = self.get_article_exactinfo()
-            self.get_icon(data_temp['cover'],self.id-1) #下载图片并命名为 文章标题.png
-            self.data_decoded.append(copy.deepcopy(data_temp))
-            print(time.ctime(time.time()),data_temp['time'],data_temp['author'],data_temp['title'])
+            self.data_decoded_temp['title'] = data['title'].replace('&amp','&')   #文章标题
+            self.data_decoded_temp['digest'] = data['digest']
+            self.data_decoded_temp['fileid'] = data['fileid']
+            self.data_decoded_temp['contenturl'] = data['content_url'] #含有用户信息的临时链接
+            self.data_decoded_temp['source_url'] = data['source_url'] #文章永久链接
+            self.data_decoded_temp['cover'] = data['cover']
+            self.data_decoded_temp['subtype'] = data['subtype']
+            self.data_decoded_temp['author'] = data['author']
+            if self.data_decoded_temp['cover'] != '':
+                self.get_icon(self.data_decoded_temp['cover'],self.id - 1) #下载图片并命名为 文章标题.png
+            self.data_decoded.append(copy.deepcopy(self.data_decoded_temp))
+            print("{:^21}  {:^12}\t{:^14}\t{:>20}\n".format('当前系统时间','推送时间','作者','标题'))
+            print("{systime:^24}  {datetime:^19}\t{author:<{len1}}\t{title:}".format(   
+                systime = time.ctime(time.time()),datetime = self.data_decoded_temp['time'],    
+                author = self.data_decoded_temp['author'],len1 = 16-len(self.data_decoded_temp['author']),   
+                title = self.data_decoded_temp['title']))
             multi = data['is_multi'] 
             if multi == 1:       #如果本次推送含有多篇文章
                 for k in i['app_msg_ext_info']['multi_app_msg_item_list']:
-                    data['inside_id'] = self.id
+                    num+=1
+                    self.data_decoded_temp['inside_id'] = self.id
                     self.id+=1
-                    data_temp['title'] = k['title'].replace('&amp','&')
-                    data_temp['digest'] = k['digest']
-                    data_temp['fileid'] = k['fileid']
-                    data_temp['content_url'] = k['content_url']
-                    data_temp['source_url'] = k['source_url']
-                    data_temp['cover'] = k['cover']
-                    data_temp['author'] = k['author']
-                    self.get_icon(data_temp['cover'],self.id-1) #下载图片并命名为 $(inside_id).png
-                    self.data_decoded.append(copy.deepcopy(data_temp))
-                    print(time.ctime(time.time()),data_temp['time'],data_temp['author'],data_temp['title'])
+                    self.data_decoded_temp['title'] = k['title'].replace('&amp','&')
+                    self.data_decoded_temp['digest'] = k['digest']
+                    self.data_decoded_temp['fileid'] = k['fileid']
+                    self.data_decoded_temp['content_url'] = k['content_url']
+                    self.data_decoded_temp['source_url'] = k['source_url']
+                    self.data_decoded_temp['cover'] = k['cover']
+                    self.data_decoded_temp['author'] = k['author']
+                    if self.data_decoded_temp['cover'] != '':
+                        self.get_icon(self.data_decoded_temp['cover'],self.id - 1) #下载图片并命名为 $(inside_id).png
+                    self.data_decoded.append(copy.deepcopy(self.data_decoded_temp))
+                    print("{systime:^24}  {datetime:^19}\t{author:<{len1}}\t{title:}".format(   
+                    systime = time.ctime(time.time()),datetime = self.data_decoded_temp['time'],    
+                    author = self.data_decoded_temp['author'],len1 = 16-len(self.data_decoded_temp['author']),   
+                    title = self.data_decoded_temp['title']))
+                print('')
+        print('本次请求共获取{:}条推送（以文章计）'.format(num))
 
     def getmsg(self,count=-1,offset=-1):   #获取公众号历史文章列表，调用时offset不为负，count为正，count最大为10（未验证），初次调用一定要指定调用参数
         if offset == -1 :   #不指定偏移量
             if count == -1: #无参数重复调用
                 self.msgparams['offset']+=self.msgparams['count']
             else:           #指定count参数大小
+                self.msgparams['offset']+=count #先加上一次的偏移量，然后将偏移量设为指定值
                 self.msgparams['count'] = count
-                self.msgparams['offset']+=count
         else:               #完全指定参数调用
             self.msgparams['offset'] = offset
             self.msgparams['count'] = count
@@ -182,13 +179,17 @@ class  weixin_spider():
             'pass_ticket':self.msgcookie['pass_ticket'],
             'wap_sid2':self.msgcookie['wap_sid2']
             }
-        response = requests.get(url = url,params = params,headers = headers,cookies = cookies,verify = False)
+        s = NoQuoteSession()    #为了解决requests会自动编码=导致请求失败的问题而引入
+        response = s.get(url = url,params = params,headers = headers,cookies = cookies
+                         #,verify = False       #这句话防止开启fiddler时无法获取请求
+                         )
         return response
 
     def get_icon(self,url,name):    #下载icon图片,默认保存在image文件夹
         path = "./image/" + str(name) + ".png"
-        if os.path.exists(path) or (os.path.getsize(path) == 0):    #如果文件存在就返回（防止抓取次数过多被封，同时提高效率）
-            return
+        if os.path.exists(path) == True :    #如果文件存在就返回（防止抓取次数过多被封，同时提高效率）
+            if os.path.getsize(path) != 0:
+                return
         response = requests.get(url)
         try:
             fp = open(path,mode = 'wb')
@@ -198,133 +199,47 @@ class  weixin_spider():
         fp.write(response.content)
         fp.close()
 
-    #def get_article_info(self,appmsg_token,wapsid2): #获取文章详细信息（如点赞数、评论数）
-    #    url = self.prefix+'getappmsgext'
-    #    appmsgparams = {
-    #        'f':'json',
-    #        'uin': self.appmsgparams['uin'],
-    #        'key':self.appmsgparams['key'],
-    #        'pass_ticket':self.appmsgparams['pass_ticket'],
-    #        'wxtoken':self.appmsgparams['wxtoken'],
-    #        '__biz':self.appmsgparams['__biz'],
-    #        'devicetype':self.appmsgparams['devicetype'],
-    #        'clientversion':self.appmsgparams['clientversion'],
-    #        'appmsg_token':appmsg_token,
-    #        }
-    #    headers = {
-    #        'User-Agent':self.appmsgheaders['User-agent']
-    #        }
-    #    cookies = { #构造专用cookie
-    #        'rewardsn':self.appmsgcookie['rewardsn'],
-    #        'wxtokenkey':self.appmsgcookie['wxtokenkey'],
-    #        'wxuin':self.appmsgcookie['wxuin'],
-    #        'devicetype':self.appmsgcookie['devicetype'],
-    #        'version':self.appmsgcookie['version'],
-    #        'lang':self.appmsgcookie['lang'],
-    #        'pass_ticket':self.appmsgcookie['pass_ticket'],
-    #        'wap_sid2':wapsid2
-    #        }
-    #    response = requests.post(url = url,headers = headers,params =
-    #    params,cookies = cookies,verify = False)
-    #    return response
-    #def get_article_exactinfo(self,url): #get_article_info的封装函数
-    #    #do something
-    #    return
-
-    #def get_comment_info(self,appmsg_token,wapsid2,offset = 0,limit = 100):
-    ##获取评论用，默认获取前100条评论
-    #    url = self.prefix+'appmsg_comment'
-    #    params = {
-    #        'action':'getcomment',
-    #        'scene':self.commentparams['scene'],
-    #        'appmsgid':self.commentparams['appmsgid'],
-    #        'idx':self.commentparams['idx'],
-    #        'comment_id':self.commentparams['comment_id'],
-    #        'offset':0,
-    #        'limit':limit,
-    #        'send_time': '',
-    #        'uin':self.commentparams['uin'],
-    #        'key':self.commentparams['key'],
-    #        'pass_ticket':self.commentparams['pass_ticket'],
-    #        'wxtoken':self.commentparams['wxtoken'],
-    #        'devicetype':self.commentparams['devicetype'],
-    #        'clientversion':self.commentparams['clientversion'],
-    #        '__biz':self.commentparams['__biz'],
-    #        'appmsgtoken':appmsg_token,
-    #        'f':'json'
-    #        }
-    #    headers = {
-    #        'User-Agent':self.commentheaders['User-Agent']
-    #        }
-    #    cookies = { #构造专用cookie
-    #        'rewardsn':self.commentcookie['rewardsn'],
-    #        'wxtokenkey':self.commentcookie['wxtokenkey'],
-    #        'wxuin':self.commentcookie['wxuin'],
-    #        'devicetype':self.commentcookie['devicetype'],
-    #        'version':self.commentcookie['version'],
-    #        'lang':self.commentcookie['lang'],
-    #        'pass_ticket':self.commentcookie['pass_ticket'],
-    #        'wap_sid2':wapsid2
-    #        }
-    #    response = requests.get(url = url,params = params,headers =
-    #    headers,cookies = cookies,verify = False)
-    #    return response
-
-    #def get_comment(self,url): #get_comment_info的封装函数
-    #    appmsg_token,comment_id = self.get_message_for_appmsg_comment(url)
-    #    #获取所需的appmsg_token和commentid
-    #    response =
-    #    self.get_comment_info(appmsg_token,self.commentcookie['wap_sid2'])
-    #    json_data = json.loads(response)
-
-
     def spider(self,count=10,offset=-10):   #爬取文章的封装函数，输入offset非负，count不大于10
         self.information_init()
         self.msgparams['count'] = count
         self.msgparams['offset'] = offset
         print("如果读取之前的配置请输入非空字符")
         if input() != "":
-            self.load_csv()
-            offset = self.load_ext()
+            print("正在读取数据，请稍候")
+            self.id = self.load_csv() + 1
+            offset,count = self.load_ext()
             self.msgparams['offset'] = offset
+            self.msgparams['count'] = count
         self.json_data['can_msg_continue'] = 1  #设定初始值，使while可以开始，该值在加载操作中会被覆盖掉，不影响后面的处理
         while (self.json_data['can_msg_continue'] == 1):
-            #try:
+            try:
                 response = self.getmsg()                #请求json
                 self.decode_response_getmsg(response)   #加载返回的json
-                if self.json_data['ret'] != 0:
-                    raise Exception(print("出现错误，程序正在退出,ret = {:}，can_msg_continue = {:}".format(json_data['ret'],json_data['can_msg_continue'])))
-                offset = self.load_ext()
-                time.sleep(10)
-            #except:
-                #return (self.data_decoded_temp,self.msgparams['offset'],self.msgparams['count'],False)   #出错退出，返回已经获取的数据
+                self.decode_list()
+                self.save_data(self.msgparams['offset'],self.msgparams['count'])
+                if self.json_data['can_msg_continue']!=1:
+                    print("已达到文章末尾，程序即将退出")
+                print("休眠5s防止被封")
+                time.sleep(5)
+            except:
+                traceback.print_exc()
+                self.save_data(self.msgparams['offset'],self.msgparams['count'])
+                print('offset = ',self.msgparams['offset'],'count = ',self.msgparams['count'],'inside_id = ',self.id)
+                return (self.data_decoded_temp,self.msgparams['offset'],self.msgparams['count'],False)
+                #出错退出，返回已经获取的数据
+        print("数据采集完成，程序正在退出")
         return (self.data_decoded_temp,self.msgparams['offset'],self.msgparams['count'],True)    #完成爬取，返回信息
 
-    def load_ext(self):     #读取配置，目前仅支持读取offset
+    def load_ext(self):     #读取配置，目前仅支持读取offset和count
         fp = open('./ext.ini','r',encoding='utf-8')
-        response = (fp.readline()).split(' = ')
-        return response
-        
-
-    #def get_message_for_appmsg_comment(self,url):
-    ##为提取阅读量获取参数：appmsg_token,comment_id
-    #    url =
-    #    url.replace('http','https').replace('amp;','').replace('#wechat_redirect','')
-    #    response = requests.get(url = url,cookies =
-    #    {'wap_sid2':self.commentcookie['wap_sid2']},verify = False)
-    #    appmsg_token = re.search('var appmsg_token =
-    #    "(.*)";',response.text).group(0)
-    #    comment_id = re.search('var comment_id = "(.*)"
-    #    \|\|',response.text).group(0)
-    #    appmsg_token = appmsg_token.replace('var appmsg_token =
-    #    "','').replace('";','')
-    #    comment_id = comment_id.replace('var comment_id = "','').replace('"
-    #    ||','')
-    #    return (appmsg_token,comment_id)
-    
+        offset = fp.readline().split(' = ')[1]
+        count = fp.readline().split(' = ')[1]
+        fp.close()
+        return (int(offset),int(count))
+  
     def load_csv(self):     #从文件中加载数据（适用于被微信封IP等操作后过一段时间继续爬取）
         print("正在加载CSV，请稍候")
-        fp = open('./result.csv','r',encoding='utf-8')
+        fp = open('./_result.csv','r',encoding='utf-8')
         reader = csv.reader(fp)
         temp_list = {}
         for row in reader:
@@ -333,9 +248,47 @@ class  weixin_spider():
             temp_list['time'] = row[1]
             temp_list['author'] = row[2]
             temp_list['source_url'] = row[3]
-            temp_list['content_url'] = row[4]
+            temp_list['contenturl'] = row[4]
             temp_list['cover'] = row[5]
             self.data_decoded.append(copy.deepcopy(temp_list))
-        return temp_list['inside_id']   #返回最后一条数据对应的内部ID
-a = weixin_spider()
-a.spider()
+        self.data_decoded.remove({'author': '作者', 'content_url': '临时链接', 'cover': '封面网址', 'inside_id': '序号', 'source_url': '永久链接', 'time': '发布时间'})
+        return int(temp_list['inside_id'])   #返回最后一条数据对应的内部ID
+
+    def save_data(self,offset,count):     #保存数据
+        print("正在保存数据，请稍候")
+        fp = open('./_result.csv','w',encoding='utf-8',newline = '')
+        writer = csv.writer(fp)
+        temp_list = []
+        writer.writerow(['序号','发布时间','作者','永久链接','临时链接','封面网址'])
+        for i in self.data_decoded:
+            temp_list.clear()
+            temp_list.append(i['inside_id'])
+            temp_list.append(i['time'])
+            temp_list.append(i['author'])
+            temp_list.append(i['source_url'])   #文章永久链接
+            temp_list.append(i['contenturl'])   #文章临时链接
+            temp_list.append(i['cover'])        #文章封面网址
+            writer.writerow(temp_list)
+        fp.close()
+        fp = open('./ext.ini','w',encoding='utf-8')
+        temp_list = []
+        temp_list.append('offset = '+str(offset)+'\n')
+        temp_list.append('count = '+str(count)+'\n')
+        #temp_list.append('can_msg_continue = '+str(self.json_data['can_msg_continue'])+'\n')
+        fp.writelines(temp_list)
+        fp.close()
+        self.utf8_to_ansi()
+
+    def utf8_to_ansi(self):     #使用ansi编码save_data会报错，utf8在excel里表示中文是乱码，所以需要转换
+        fp_ansi = open('./输出.csv','wb')
+        fp_utf8 = open('./_result.csv','rb')
+        data = ""
+        data = fp_utf8.read()
+        data = data.decode('utf-8')
+        data = data.encode('mbcs',errors = 'ignore')
+        fp_ansi.write(data)
+        fp_ansi.close()
+        fp_utf8.close()
+
+obj = weixin_spider()
+obj.spider()
