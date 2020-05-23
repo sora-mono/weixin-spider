@@ -102,7 +102,23 @@ class  weixin_spider():
             self.data_decoded_temp['time'] = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(data['datetime']))
             self.data_decoded_temp['fakeid'] = data['fakeid']
             self.data_decoded_temp['status'] = data['status']
-            data = i['app_msg_ext_info']
+            try:        #有些单篇文章无该字段
+                data = i['app_msg_ext_info']
+            except:
+                self.data_decoded_temp['title'] = data['content']
+                self.data_decoded_temp['digest'] = ''
+                self.data_decoded_temp['fileid'] = ''
+                self.data_decoded_temp['content_url'] = ''
+                self.data_decoded_temp['source_url'] = ''
+                self.data_decoded_temp['cover'] = ''
+                self.data_decoded_temp['subtype'] = ''
+                self.data_decoded_temp['author'] = ''
+                print("{:^21}  {:^12}\t{:^14}\t{:>20}\n".format('当前系统时间','推送时间','作者','标题'))
+                print("{systime:^24}  {datetime:^19}\t{author:<{len1}}\t{title:}".format(   
+                systime = time.ctime(time.time()),datetime = self.data_decoded_temp['time'],    
+                author = self.data_decoded_temp['author'],len1 = 16-len(self.data_decoded_temp['author']),   
+                title = self.data_decoded_temp['title'])) 
+                continue
             self.data_decoded_temp['title'] = data['title'].replace('&amp','&')   #文章标题
             self.data_decoded_temp['digest'] = data['digest']
             self.data_decoded_temp['fileid'] = data['fileid']
@@ -182,7 +198,7 @@ class  weixin_spider():
             }
         s = NoQuoteSession()    #为了解决requests会自动编码=导致请求失败的问题而引入
         response = s.get(url = url,params = params,headers = headers,cookies = cookies
-                         ,verify = False       #这句话防止开启fiddler时无法获取请求
+                         #,verify = False       #这句话防止开启fiddler时无法获取请求
                          )
         return response
 
