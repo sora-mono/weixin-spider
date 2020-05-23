@@ -227,9 +227,9 @@ class  weixin_spider():
                 self.save_data(self.msgparams['offset'],self.msgparams['count'])
                 print('offset = ',self.msgparams['offset'],'count = ',self.msgparams['count'],'inside_id = ',self.id)
                 return (self.data_decoded_temp,self.msgparams['offset'],self.msgparams['count'],False)
-                #出错退出，返回已经获取的数据
+                #出错退出，返回当前循环获取的数据
         print("数据采集完成，程序正在退出")
-        return (self.data_decoded_temp,self.msgparams['offset'],self.msgparams['count'],True)    #完成爬取，返回信息
+        return (self.data_decoded,self.msgparams['offset'],self.msgparams['count'],True)    #完成爬取，返回信息
 
     def load_ext(self):     #读取配置，目前仅支持读取offset和count
         fp = open('./ext.ini','r',encoding='utf-8')
@@ -247,12 +247,13 @@ class  weixin_spider():
             temp_list.clear()
             temp_list['inside_id'] = row[0]
             temp_list['time'] = row[1]
-            temp_list['author'] = row[2]
-            temp_list['source_url'] = row[3]
-            temp_list['content_url'] = row[4]
-            temp_list['cover'] = row[5]
+            temp_list['title'] = row[2]
+            temp_list['author'] = row[3]
+            temp_list['source_url'] = row[4]
+            temp_list['content_url'] = row[5]
+            temp_list['cover'] = row[6]
             self.data_decoded.append(copy.deepcopy(temp_list))
-        self.data_decoded.remove({'author': '作者', 'content_url': '临时链接', 'cover': '封面网址', 'inside_id': '序号', 'source_url': '永久链接', 'time': '发布时间'})
+        self.data_decoded.remove({'author': '作者', 'content_url': '临时链接', 'title':'标题', 'cover': '封面网址', 'inside_id': '序号', 'source_url': '永久链接', 'time': '发布时间'})
         return int(temp_list['inside_id'])   #返回最后一条数据对应的内部ID
 
     def save_data(self,offset,count):     #保存数据
@@ -260,11 +261,12 @@ class  weixin_spider():
         fp = open('./_result.csv','w',encoding='utf-8',newline = '')
         writer = csv.writer(fp)
         temp_list = []
-        writer.writerow(['序号','发布时间','作者','永久链接','临时链接','封面网址'])
+        writer.writerow(['序号','发布时间','标题','作者','永久链接','临时链接','封面网址'])
         for i in self.data_decoded:
             temp_list.clear()
             temp_list.append(i['inside_id'])
             temp_list.append(i['time'])
+            temp_list.append(i['title'])
             temp_list.append(i['author'])
             temp_list.append(i['source_url'])   #文章永久链接
             temp_list.append(i['content_url'])   #文章临时链接
