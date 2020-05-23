@@ -220,8 +220,8 @@ class  weixin_spider():
                 self.save_data(self.msgparams['offset'],self.msgparams['count'])
                 if self.json_data['can_msg_continue']!=1:
                     print("已达到文章末尾，程序即将退出")
-                print("休眠3s防止被封")
-                time.sleep(3)
+                print("休眠5s防止被封")
+                time.sleep(5)
             except:
                 traceback.print_exc()
                 self.save_data(self.msgparams['offset'],self.msgparams['count'])
